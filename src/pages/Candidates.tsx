@@ -247,37 +247,51 @@ const Candidates = () => {
       
       // Get last applied (previous time, not the current one)
       const previousApplications = sorted.slice(1);
-      const lastApplied = previousApplications.length > 0 
-        ? new Date(previousApplications[0].created_at).toLocaleDateString()
-        : null;
       
-      // Get last applied roles with format: "RoleCode: Score, ScreeningResponse"
+      // Get current application date (normalized to date only, no time)
+      const currentAppDate = new Date(latest.created_at);
+      currentAppDate.setHours(0, 0, 0, 0);
+      
+      // Only show Last Applied if:
+      // 1. There are previous applications
+      // 2. The last applied date is different from the current application date
+      let lastApplied: string | null = null;
       const lastAppliedRoles: string[] = [];
+      
       if (previousApplications.length > 0) {
-        const uniqueRoleCodes = new Set(
-          previousApplications
-            .map(app => app["Role Code"])
-            .filter((rc): rc is string => rc !== null)
-        );
-
-        uniqueRoleCodes.forEach(roleCode => {
-          // Find the most recent application with this role code
-          const appWithRoleCode = previousApplications.find(
-            app => app["Role Code"] === roleCode
-          );
+        const lastAppliedDate = new Date(previousApplications[0].created_at);
+        lastAppliedDate.setHours(0, 0, 0, 0);
+        
+        // Compare dates - only show if they're different
+        if (lastAppliedDate.getTime() !== currentAppDate.getTime()) {
+          lastApplied = lastAppliedDate.toLocaleDateString();
           
-          if (appWithRoleCode) {
-            // Get score from CV matching
-            const cvKey = `${appWithRoleCode["Application ID"]}_${roleCode}`;
-            const score = cvScoreMap.get(cvKey) || "—";
+          // Get last applied roles with format: "RoleCode: Score, ScreeningResponse"
+          const uniqueRoleCodes = new Set(
+            previousApplications
+              .map(app => app["Role Code"])
+              .filter((rc): rc is string => rc !== null)
+          );
+
+          uniqueRoleCodes.forEach(roleCode => {
+            // Find the most recent application with this role code
+            const appWithRoleCode = previousApplications.find(
+              app => app["Role Code"] === roleCode
+            );
             
-            // Get screening response (use "Null" if not exist)
-            const screeningResponse = appWithRoleCode["Screening Response"] || "Null";
-            
-            // Format: "RoleCode: Score, ScreeningResponse"
-            lastAppliedRoles.push(`${roleCode}: ${score}, ${screeningResponse}`);
-          }
-        });
+            if (appWithRoleCode) {
+              // Get score from CV matching
+              const cvKey = `${appWithRoleCode["Application ID"]}_${roleCode}`;
+              const score = cvScoreMap.get(cvKey) || "—";
+              
+              // Get screening response (use "Null" if not exist)
+              const screeningResponse = appWithRoleCode["Screening Response"] || "Null";
+              
+              // Format: "RoleCode: Score, ScreeningResponse"
+              lastAppliedRoles.push(`${roleCode}: ${score}, ${screeningResponse}`);
+            }
+          });
+        }
       }
 
       // Default value: No. of Times Applied = 1 for all entries

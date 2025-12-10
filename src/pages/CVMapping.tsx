@@ -326,11 +326,51 @@ const CVMapping = () => {
 
     setStartingScreening(true);
     try {
-      // Update screening status or perform screening action
-      // You may need to update this based on your screening workflow
+      // Mark selected candidates as "Screening Started"
+      const { error: updateError } = await supabase
+        .from("AEX_Candidate_Data")
+        .update({ JD_Mapping: "Screening Started" })
+        .in("id", selectedScreeningIds);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // Build rows for screening batch queue
+      const selectedCandidates = filteredScreeningCandidates.filter((c) =>
+        selectedScreeningIds.includes(c.id)
+      );
+
+      const rows = selectedCandidates
+        .map((candidate) => {
+          const applicationId = candidate["Application ID"];
+          const roleCode = candidate["Role Code"];
+
+          if (!applicationId || !roleCode) return null;
+
+          return {
+            "Application ID": applicationId,
+            "Role Code": roleCode,
+            Status: "Pending",
+          };
+        })
+        .filter((row): row is { "Application ID": string; "Role Code": string; Status: string } => row !== null);
+
+      if (rows.length === 0) {
+        throw new Error("No valid rows to insert (missing Application ID or Role Code).");
+      }
+
+      const { error: insertError } = await supabase
+        .from("AEX_Screening_Batch_Queue")
+        .insert(rows as any);
+
+      if (insertError) {
+        throw insertError;
+      }
+
       toast({
         title: "Success",
-        description: `Screening started for ${selectedScreeningIds.length} candidate(s)`,
+        description: `Screening started for ${rows.length} candidate(s)`,
       });
       setSelectedScreeningIds([]);
       await fetchScreeningCandidates();

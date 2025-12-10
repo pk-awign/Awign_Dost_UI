@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Target, Clock, CheckCircle, XCircle, RefreshCw } from "lucide-react";
+import { Loader2, Target, RefreshCw, ExternalLink } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,24 +12,43 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ScreeningRecord {
-  id: string;
-  timestamp: string;
-  application_id: string;
-  candidate_name: string;
-  role_code: string;
-  job_title: string;
-  screening_outcome: string;
-  call_status: string;
-  call_score: number | null;
-  final_score: number | null;
-  screening_summary: string | null;
+  id?: string;
+  "Application ID": string;
+  "Job Title": string | null;
+  "Role Code": string | null;
+  "Candidate Name": string | null;
+  "Screening Outcome": string | null;
+  "Screening Summary": string | null;
+  "Call Status": string | null;
+  "Call Score": string | null;
+  "Similarity Score": string | null;
+  "Final Score": string | null;
+  "Conversation ID": string | null;
+  "Recording Link": string | null;
+  "Notice Period": string | null;
+  "Current CTC": string | null;
+  "Expected CTC": string | null;
+  "Other Job Offers": string | null;
+  "Current Location": string | null;
+  "Call Route": string | null;
+  "Similarity Summary": string | null;
+  "Rejection Reason": string | null;
 }
 
 const Screening = () => {
   const [screenings, setScreenings] = useState<ScreeningRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRecord, setSelectedRecord] = useState<ScreeningRecord | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchScreenings();
@@ -38,9 +57,9 @@ const Screening = () => {
   const fetchScreenings = async () => {
     try {
       const { data, error } = await supabase
-        .from("screening_tracker")
+        .from("AEX_Screening_Tracker")
         .select("*")
-        .order("timestamp", { ascending: false });
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setScreenings(data || []);
@@ -51,8 +70,9 @@ const Screening = () => {
     }
   };
 
-  const getOutcomeColor = (outcome: string) => {
-    switch (outcome?.toLowerCase()) {
+  const getOutcomeColor = (outcome: string | null) => {
+    if (!outcome) return "bg-muted text-muted-foreground";
+    switch (outcome.toLowerCase()) {
       case "pass":
       case "passed":
       case "selected":
@@ -68,11 +88,18 @@ const Screening = () => {
     }
   };
 
-  const getScoreColor = (score: number | null) => {
+  const getScoreColor = (score: string | null) => {
     if (!score) return "text-muted-foreground";
-    if (score >= 80) return "text-status-success font-semibold";
-    if (score >= 60) return "text-status-pending font-semibold";
+    const numScore = parseFloat(score);
+    if (isNaN(numScore)) return "text-muted-foreground";
+    if (numScore >= 80) return "text-status-success font-semibold";
+    if (numScore >= 60) return "text-status-pending font-semibold";
     return "text-status-rejected font-semibold";
+  };
+
+  const handleRowClick = (record: ScreeningRecord) => {
+    setSelectedRecord(record);
+    setDetailDialogOpen(true);
   };
 
   if (loading) {
@@ -108,64 +135,82 @@ const Screening = () => {
       {screenings.length > 0 ? (
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Candidate</TableHead>
-                  <TableHead>Job Role</TableHead>
-                  <TableHead>Call Status</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Outcome</TableHead>
-                  <TableHead>Summary</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {screenings.map((screening) => (
-                  <TableRow key={screening.id}>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(screening.timestamp).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{screening.candidate_name}</div>
-                        <div className="text-xs text-muted-foreground font-mono">
-                          {screening.application_id}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{screening.job_title || "—"}</div>
-                        <div className="text-xs text-muted-foreground">{screening.role_code}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{screening.call_status || "—"}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className={getScoreColor(screening.final_score)}>
-                        {screening.final_score ? `${screening.final_score}/100` : "—"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {screening.screening_outcome ? (
-                        <Badge className={getOutcomeColor(screening.screening_outcome)}>
-                          {screening.screening_outcome}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-md">
-                      <p className="text-sm text-muted-foreground truncate">
-                        {screening.screening_summary || "No summary available"}
-                      </p>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Application ID</TableHead>
+                    <TableHead>Candidate Name</TableHead>
+                    <TableHead>Job Title</TableHead>
+                    <TableHead>Role Code</TableHead>
+                    <TableHead>Call Status</TableHead>
+                    <TableHead>Call Score</TableHead>
+                    <TableHead>Similarity Score</TableHead>
+                    <TableHead>Final Score</TableHead>
+                    <TableHead>Screening Outcome</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {screenings.map((screening, index) => (
+                    <TableRow 
+                      key={screening["Application ID"] || index}
+                      className="cursor-pointer hover:bg-muted/50"
+                    >
+                      <TableCell className="font-mono text-sm">
+                        {screening["Application ID"] || "—"}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {screening["Candidate Name"] || "—"}
+                      </TableCell>
+                      <TableCell>{screening["Job Title"] || "—"}</TableCell>
+                      <TableCell>{screening["Role Code"] || "—"}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {screening["Call Status"] || "—"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className={getScoreColor(screening["Call Score"])}>
+                          {screening["Call Score"] || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className={getScoreColor(screening["Similarity Score"])}>
+                          {screening["Similarity Score"] || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className={getScoreColor(screening["Final Score"])}>
+                          {screening["Final Score"] || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {screening["Screening Outcome"] ? (
+                          <Badge className={getOutcomeColor(screening["Screening Outcome"])}>
+                            {screening["Screening Outcome"]}
+                          </Badge>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRowClick(screening);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -179,6 +224,139 @@ const Screening = () => {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Screening Details</DialogTitle>
+            <DialogDescription>
+              Complete screening information for {selectedRecord?.["Candidate Name"] || "Candidate"}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedRecord && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <div className="space-y-2">
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Application ID</label>
+                  <p className="text-sm font-mono">{selectedRecord["Application ID"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Candidate Name</label>
+                  <p className="text-sm">{selectedRecord["Candidate Name"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Job Title</label>
+                  <p className="text-sm">{selectedRecord["Job Title"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Role Code</label>
+                  <p className="text-sm">{selectedRecord["Role Code"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Screening Outcome</label>
+                  <div className="mt-1">
+                    {selectedRecord["Screening Outcome"] ? (
+                      <Badge className={getOutcomeColor(selectedRecord["Screening Outcome"])}>
+                        {selectedRecord["Screening Outcome"]}
+                      </Badge>
+                    ) : (
+                      <span className="text-sm">—</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Call Status</label>
+                  <p className="text-sm">
+                    <Badge variant="outline">{selectedRecord["Call Status"] || "—"}</Badge>
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Call Score</label>
+                  <p className={`text-sm ${getScoreColor(selectedRecord["Call Score"])}`}>
+                    {selectedRecord["Call Score"] || "—"}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Similarity Score</label>
+                  <p className={`text-sm ${getScoreColor(selectedRecord["Similarity Score"])}`}>
+                    {selectedRecord["Similarity Score"] || "—"}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Final Score</label>
+                  <p className={`text-sm ${getScoreColor(selectedRecord["Final Score"])}`}>
+                    {selectedRecord["Final Score"] || "—"}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Conversation ID</label>
+                  <p className="text-sm font-mono">{selectedRecord["Conversation ID"] || "—"}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Recording Link</label>
+                  {selectedRecord["Recording Link"] ? (
+                    <a
+                      href={selectedRecord["Recording Link"]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Open Recording
+                    </a>
+                  ) : (
+                    <p className="text-sm">—</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Notice Period</label>
+                  <p className="text-sm">{selectedRecord["Notice Period"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Current CTC</label>
+                  <p className="text-sm">{selectedRecord["Current CTC"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Expected CTC</label>
+                  <p className="text-sm">{selectedRecord["Expected CTC"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Other Job Offers</label>
+                  <p className="text-sm">{selectedRecord["Other Job Offers"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Current Location</label>
+                  <p className="text-sm">{selectedRecord["Current Location"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Call Route</label>
+                  <p className="text-sm">{selectedRecord["Call Route"] || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Screening Summary</label>
+                  <p className="text-sm whitespace-pre-wrap">
+                    {selectedRecord["Screening Summary"] || "—"}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Similarity Summary</label>
+                  <p className="text-sm whitespace-pre-wrap">
+                    {selectedRecord["Similarity Summary"] || "—"}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground">Rejection Reason</label>
+                  <p className="text-sm whitespace-pre-wrap text-status-rejected">
+                    {selectedRecord["Rejection Reason"] || "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

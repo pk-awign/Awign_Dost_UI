@@ -20,13 +20,13 @@ const Dashboard = () => {
         supabase.from("AEX_Job_Data").select("id", { count: "exact", head: true }),
         supabase.from("AEX_Candidate_Data").select("id", { count: "exact", head: true }),
         supabase
-          .from("screening_tracker")
+          .from("AEX_Screening_Batch_Queue")
           .select("id", { count: "exact", head: true })
-          .in("screening_outcome", ["pass", "passed", "completed"]),
+          .eq("Status", "Completed"),
         supabase
-          .from("screening_batch_queue")
+          .from("AEX_Screening_Batch_Queue")
           .select("id", { count: "exact", head: true })
-          .eq("status", "processing"),
+          .eq("Status", "Processing"),
       ]);
 
       setStats({
