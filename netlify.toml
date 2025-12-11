@@ -3,10 +3,12 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"
+  # Omit these client-side environment variables from secret scanning
+  # These are expected to be in the build output as they're needed client-side
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_PROJECT_ID"
 
-# Note: Netlify's secret scanner may flag environment variable names
-# (like VITE_SUPABASE_URL) in the source code. These are NOT actual secrets,
-# just references to environment variables that should be set in Netlify's
-# dashboard under Site settings > Environment variables.
+# Note: The VITE_* environment variables are client-side and must be included
+# in the build output. They are not server-side secrets and are safe to expose
+# in the client bundle. Configure Netlify to omit them from secret scanning.
 
