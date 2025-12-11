@@ -549,17 +549,21 @@ const Candidates = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-foreground">Candidates</h2>
-          <p className="text-muted-foreground mt-1">Manage candidate profiles and applications</p>
+          <h1 className="text-4xl font-bold tracking-tight text-foreground mb-2">Candidates</h1>
+          <p className="text-muted-foreground text-base">Manage candidate profiles and applications</p>
         </div>
         <div className="flex items-center gap-2">
-          <Card className="px-4 py-2">
-            <div className="text-sm text-muted-foreground">Total: <span className="font-semibold text-foreground">{groupedCandidates.length}</span></div>
+          <Card className="border-blue-200/60 bg-blue-50/30">
+            <CardContent className="px-4 py-2.5">
+              <div className="text-sm text-muted-foreground">
+                Total: <span className="font-semibold text-blue-700">{groupedCandidates.length}</span>
+              </div>
+            </CardContent>
           </Card>
-          <Button onClick={fetchCandidates} variant="outline" disabled={loading}>
+          <Button onClick={fetchCandidates} variant="outline" size="sm" disabled={loading}>
             {loading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -569,7 +573,10 @@ const Candidates = () => {
           </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button><Plus className="h-4 w-4 mr-2" />Add Candidate</Button>
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Candidate
+              </Button>
             </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -686,9 +693,9 @@ const Candidates = () => {
                 </form>
               </TabsContent>
               <TabsContent value="csv" className="mt-4">
-                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-                  <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Upload CSV File</h3>
+                <div className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center bg-blue-50/30 hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
+                  <Upload className="h-12 w-12 mx-auto text-blue-600 mb-4" />
+                  <h3 className="text-lg font-semibold mb-2 text-blue-800">Upload CSV File</h3>
                   <p className="text-sm text-muted-foreground mb-4">
                     CSV columns: Role Code, Candidate Name, Candidate Email ID, etc.
                   </p>
@@ -712,89 +719,94 @@ const Candidates = () => {
       </div>
 
       {groupedCandidates.length > 0 ? (
-        <Card>
+        <Card className="border-blue-200/60 shadow-lg">
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Role Code List</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Last Applied</TableHead>
-                  <TableHead>Last Applied Roles</TableHead>
-                  <TableHead>No. of Times Applied</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {groupedCandidates.map((group, idx) => (
-                  <TableRow
-                    key={`${group.contact}-${idx}`}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => {
-                      // Show the most recent application
-                      setSelectedCandidate(group.allApplications[0]);
-                      setDetailDialogOpen(true);
-                    }}
-                  >
-                    <TableCell>{group.date}</TableCell>
-                    <TableCell className="font-medium">{group.name}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-sm">
-                        <Phone className="h-3 w-3" />
-                        {group.contact}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {group.roleCodeList.length > 0 ? (
-                          group.roleCodeList.map((roleCode, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium"
-                            >
-                              {roleCode}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{group.location}</TableCell>
-                    <TableCell>{group.lastApplied || "—"}</TableCell>
-                    <TableCell>
-                      {group.lastAppliedRoles.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {group.lastAppliedRoles.map((role, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center px-2 py-1 rounded-md bg-secondary text-secondary-foreground text-xs"
-                            >
-                              {role}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-medium">{group.timesApplied}</span>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent border-b-2 border-blue-300/60 bg-blue-50/30">
+                    <TableHead className="font-bold text-foreground">Date</TableHead>
+                    <TableHead className="font-bold text-foreground">Name</TableHead>
+                    <TableHead className="font-bold text-foreground">Contact</TableHead>
+                    <TableHead className="font-bold text-foreground">Role Code List</TableHead>
+                    <TableHead className="font-bold text-foreground">Location</TableHead>
+                    <TableHead className="font-bold text-foreground">Last Applied</TableHead>
+                    <TableHead className="font-bold text-foreground">Last Applied Roles</TableHead>
+                    <TableHead className="font-bold text-foreground">No. of Times Applied</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {groupedCandidates.map((group, idx) => (
+                    <TableRow
+                      key={`${group.contact}-${idx}`}
+                      className="cursor-pointer hover:bg-blue-50 transition-colors border-b border-blue-200/40"
+                      onClick={() => {
+                        setSelectedCandidate(group.allApplications[0]);
+                        setDetailDialogOpen(true);
+                      }}
+                    >
+                      <TableCell className="text-sm">{group.date}</TableCell>
+                      <TableCell className="font-medium text-sm">{group.name}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 text-sm">
+                          <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span>{group.contact}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1.5">
+                          {group.roleCodeList.length > 0 ? (
+                            group.roleCodeList.map((roleCode, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center px-2 py-0.5 rounded-md bg-primary/10 text-primary text-xs font-medium"
+                              >
+                                {roleCode}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-muted-foreground text-sm">—</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">{group.location}</TableCell>
+                      <TableCell className="text-sm">{group.lastApplied || "—"}</TableCell>
+                      <TableCell>
+                        {group.lastAppliedRoles.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {group.lastAppliedRoles.map((role, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-xs"
+                              >
+                                {role}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium text-sm">{group.timesApplied}</span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Users className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No candidates yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">Start by adding your first candidate</p>
+        <Card className="border-blue-200/60 shadow-lg bg-gradient-to-br from-card to-blue-50/30">
+          <CardContent className="flex flex-col items-center justify-center py-20">
+            <div className="p-5 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-50 mb-6 shadow-lg shadow-blue-500/10 border border-blue-200/50">
+              <Users className="h-10 w-10 text-blue-700" />
+            </div>
+            <h3 className="text-2xl font-bold text-foreground mb-2">No candidates yet</h3>
+            <p className="text-base text-muted-foreground text-center max-w-md">
+              Start by adding your first candidate to begin the screening process
+            </p>
           </CardContent>
         </Card>
       )}

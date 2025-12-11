@@ -568,19 +568,21 @@ const Jobs = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-foreground">Jobs</h2>
-          <p className="text-muted-foreground mt-1">Manage job openings and requirements</p>
+          <h1 className="text-4xl font-bold tracking-tight text-foreground mb-2">Jobs</h1>
+          <p className="text-muted-foreground text-base">Manage job openings and requirements</p>
         </div>
         <div className="flex items-center gap-2">
-          <Card>
-            <CardContent className="px-4 py-2">
-              <div className="text-sm text-muted-foreground">Total: <span className="font-semibold text-foreground">{jobs.length}</span></div>
+          <Card className="border-border/50">
+            <CardContent className="px-4 py-2.5">
+              <div className="text-sm text-muted-foreground">
+                Total: <span className="font-semibold text-foreground">{jobs.length}</span>
+              </div>
             </CardContent>
           </Card>
-          <Button onClick={fetchJobs} variant="outline" disabled={loading}>
+          <Button onClick={fetchJobs} variant="outline" size="sm" disabled={loading}>
             {loading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -590,7 +592,7 @@ const Jobs = () => {
           </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button size="sm">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Job
               </Button>
@@ -729,9 +731,9 @@ const Jobs = () => {
               
               <TabsContent value="csv" className="mt-4">
                 <div className="space-y-4">
-                  <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-                    <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Upload CSV File</h3>
+                  <div className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center bg-blue-50/30 hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
+                    <Upload className="h-12 w-12 mx-auto text-blue-600 mb-4" />
+                    <h3 className="text-lg font-semibold mb-2 text-blue-800">Upload CSV File</h3>
                     <p className="text-sm text-muted-foreground mb-4">
                       Upload a CSV file with job data. Required columns:
                     </p>
@@ -783,47 +785,56 @@ const Jobs = () => {
         {jobs.map((job, index) => (
           <Card
             key={job.id}
-            className="hover:shadow-lg transition-shadow cursor-pointer"
+            className="border-blue-200/60 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 cursor-pointer group overflow-hidden"
             onClick={(e) => {
               e.stopPropagation();
               setSelectedJob(job);
               setDetailDialogOpen(true);
             }}
           >
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <Briefcase className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-lg">{job["Role Name"] || "—"}</CardTitle>
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+            <CardHeader className="pb-4 relative z-10">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-100 to-blue-50 text-blue-700 mt-0.5 flex-shrink-0 shadow-sm border border-blue-200/50">
+                    <Briefcase className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-lg font-bold line-clamp-2 mb-1.5 group-hover:text-blue-700 transition-colors">
+                      {job["Role Name"] || "—"}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground font-mono truncate bg-blue-50 px-2 py-0.5 rounded-md inline-block border border-blue-200/50">
+                      {job["Role Code"] || "—"}
+                    </p>
+                  </div>
                 </div>
-                <Badge variant={getStatusColor(job["Status"])}>
+                <Badge variant={getStatusColor(job["Status"])} className="flex-shrink-0 shadow-sm">
                   {job["Status"] || "N/A"}
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground font-mono">{job["Role Code"] || "—"}</p>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 pt-0 relative z-10">
               {job["Location"] && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
-                  {job["Location"]}
+                  <MapPin className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                  <span className="truncate">{job["Location"]}</span>
                 </div>
               )}
               {job["Minimum Experience"] && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  {job["Minimum Experience"]}
+                  <Clock className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                  <span>{job["Minimum Experience"]}</span>
                 </div>
               )}
               {job["Skills"] && (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-2 pt-2">
                   {job["Skills"].split(",").slice(0, 3).map((skill, idx) => (
-                    <Badge key={idx} variant="outline" className="text-xs">
+                    <Badge key={idx} variant="outline" className="text-xs font-medium border-blue-300 bg-blue-50/50 text-blue-700">
                       {skill.trim()}
                     </Badge>
                   ))}
                   {job["Skills"].split(",").length > 3 && (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline" className="text-xs font-medium border-blue-300 bg-blue-50/50 text-blue-700">
                       +{job["Skills"].split(",").length - 3}
                     </Badge>
                   )}
@@ -835,12 +846,14 @@ const Jobs = () => {
       </div>
 
       {jobs.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Briefcase className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No jobs yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Start by adding your first job opening
+        <Card className="border-blue-200/60 shadow-lg bg-gradient-to-br from-card to-blue-50/30">
+          <CardContent className="flex flex-col items-center justify-center py-20">
+            <div className="p-5 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-50 mb-6 shadow-lg shadow-blue-500/10 border border-blue-200/50">
+              <Briefcase className="h-10 w-10 text-blue-700" />
+            </div>
+            <h3 className="text-2xl font-bold text-blue-800 mb-2">No jobs yet</h3>
+            <p className="text-base text-muted-foreground text-center max-w-md">
+              Start by adding your first job opening to get started with the screening process
             </p>
           </CardContent>
         </Card>

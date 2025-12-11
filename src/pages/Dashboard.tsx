@@ -81,15 +81,15 @@ const Dashboard = () => {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-foreground">Dashboard</h2>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-4xl font-bold tracking-tight text-foreground mb-2">Dashboard</h1>
+          <p className="text-muted-foreground text-base">
             Overview of your recruitment screening operations
           </p>
         </div>
-        <Button onClick={fetchStats} disabled={refreshing} variant="outline">
+        <Button onClick={fetchStats} disabled={refreshing} variant="outline" size="default" className="shadow-sm">
           {refreshing ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
@@ -99,39 +99,61 @@ const Dashboard = () => {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
+            <Card key={stat.title} className="border-blue-200/60 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 relative z-10">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   {stat.title}
                 </CardTitle>
-                <Icon className={`h-5 w-5 ${stat.color}`} />
+                <div className={`p-2.5 rounded-xl bg-gradient-to-br from-blue-100 to-blue-50 ${stat.color} shadow-sm border border-blue-200/50`}>
+                  <Icon className="h-5 w-5" />
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-foreground">{stat.value}</div>
+              <CardContent className="relative z-10">
+                <div className="text-4xl font-bold tracking-tight text-blue-700 mb-1">{stat.value}</div>
+                <div className="h-1 w-12 bg-gradient-to-r from-blue-600 to-blue-400 rounded-full mt-2" />
               </CardContent>
             </Card>
           );
         })}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Start</CardTitle>
+      <Card className="border-blue-200/60 shadow-lg bg-gradient-to-br from-card to-blue-50/30">
+        <CardHeader className="pb-4 border-b border-blue-200/50">
+          <CardTitle className="text-xl font-bold text-foreground">Quick Start Guide</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <h3 className="font-semibold text-foreground">Getting Started</h3>
-            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-              <li>Add jobs to your system via the Jobs page</li>
-              <li>Upload candidates (CSV or individual entries) in the Candidates page</li>
-              <li>Initiate CV-JD matching to assess candidate fit</li>
-              <li>Push candidates to screening queue</li>
-              <li>Monitor screening progress in the Screening Tracker</li>
-              <li>View analytics and insights in the Analytics dashboard</li>
+        <CardContent>
+          <div className="space-y-4">
+            <h3 className="font-semibold text-foreground text-base">Getting Started</h3>
+            <ul className="space-y-3 text-sm text-muted-foreground">
+              <li className="flex items-start gap-3 group/item">
+                <div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/60 group-hover/item:scale-125 transition-transform" />
+                <span className="group-hover/item:text-foreground transition-colors">Add jobs to your system via the Jobs page</span>
+              </li>
+              <li className="flex items-start gap-3 group/item">
+                <div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/60 group-hover/item:scale-125 transition-transform" />
+                <span className="group-hover/item:text-foreground transition-colors">Upload candidates (CSV or individual entries) in the Candidates page</span>
+              </li>
+              <li className="flex items-start gap-3 group/item">
+                <div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/60 group-hover/item:scale-125 transition-transform" />
+                <span className="group-hover/item:text-foreground transition-colors">Initiate CV-JD matching to assess candidate fit</span>
+              </li>
+              <li className="flex items-start gap-3 group/item">
+                <div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/60 group-hover/item:scale-125 transition-transform" />
+                <span className="group-hover/item:text-foreground transition-colors">Push candidates to screening queue</span>
+              </li>
+              <li className="flex items-start gap-3 group/item">
+                <div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/60 group-hover/item:scale-125 transition-transform" />
+                <span className="group-hover/item:text-foreground transition-colors">Monitor screening progress in the Screening Tracker</span>
+              </li>
+              <li className="flex items-start gap-3 group/item">
+                <div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/60 group-hover/item:scale-125 transition-transform" />
+                <span className="group-hover/item:text-foreground transition-colors">View analytics and insights in the Analytics dashboard</span>
+              </li>
             </ul>
           </div>
         </CardContent>
