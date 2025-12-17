@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Loader2, Users, Mail, Phone, Upload, FileSpreadsheet, RefreshCw, FileText, X } from "lucide-react";
+import { Plus, Loader2, Users, Mail, Phone, Upload, FileSpreadsheet, RefreshCw, FileText, X, Download } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import {
   Table,
@@ -643,15 +643,176 @@ const Candidates = () => {
     }
   };
 
+  // Function to convert phone number formats to normal integer format
+  const normalizePhoneNumber = (value: string): string => {
+    if (!value) return value;
+    
+    // Remove single quote prefix if present (Excel text format)
+    let cleanedValue = value.trim();
+    if (cleanedValue.startsWith("'")) {
+      cleanedValue = cleanedValue.substring(1);
+    }
+    
+    // Check if value contains scientific notation (E or e)
+    const scientificNotationRegex = /^[\d.]+[Ee][+-]?\d+$/;
+    if (scientificNotationRegex.test(cleanedValue)) {
+      try {
+        // Convert scientific notation to number
+        const num = parseFloat(cleanedValue);
+        // For phone numbers, we want the full integer without decimal
+        return num.toFixed(0);
+      } catch (error) {
+        // If conversion fails, return original value (without quote if it was there)
+        return cleanedValue;
+      }
+    }
+    
+    // Handle decimal format (e.g., 919911486130.00)
+    // Check if value ends with .00 or .0 (decimal format)
+    const decimalRegex = /^(\d+)\.0+$/;
+    const match = cleanedValue.match(decimalRegex);
+    if (match) {
+      // Return just the integer part (remove .00 or .0)
+      return match[1];
+    }
+    
+    // If it's a regular decimal number, convert to integer
+    if (cleanedValue.includes('.')) {
+      try {
+        const num = parseFloat(cleanedValue);
+        // Check if it's a whole number (ends with .00, .0, etc.)
+        if (num % 1 === 0) {
+          return num.toFixed(0);
+        }
+      } catch (error) {
+        // If conversion fails, return original value
+        return cleanedValue;
+      }
+    }
+    
+    // Return cleaned value (without quote prefix if it was there)
+    return cleanedValue;
+  };
+
+  const downloadSampleCsv = async () => {
+    // Load xlsx library from CDN to create Excel file with proper formatting
+    let XLSX: any;
+    if (typeof window !== 'undefined' && (window as any).XLSX) {
+      XLSX = (window as any).XLSX;
+    } else {
+      // Load xlsx from CDN
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        script.onload = () => {
+          XLSX = (window as any).XLSX;
+          resolve();
+        };
+        script.onerror = () => reject(new Error('Failed to load xlsx from CDN'));
+        document.head.appendChild(script);
+      });
+    }
+
+    // Define mandatory fields (highlighted in red/yellow)
+    const mandatoryFields = [
+      "Role Code",
+      "Candidate Name",
+      "Candidate Email ID",
+      "Candidate Contact Number",
+      "Candidate Resume"
+    ];
+    
+    // Define optional fields
+    const optionalFields = [
+      "Candidate years of experience",
+      "Candidate relevant years of experience",
+      "Notice Period",
+      "Current CTC",
+      "Expected CTC",
+      "Candidate Salary Expectation",
+      "Current Location",
+      "Skills",
+      "Documents"
+    ];
+
+    // Create headers array
+    const headers = [...mandatoryFields, ...optionalFields];
+    
+    // Create empty sample data row (all empty values)
+    const sampleRow: any = {};
+    headers.forEach((header) => {
+      sampleRow[header] = "";
+    });
+
+    // Create worksheet with headers only (empty data row)
+    const ws = XLSX.utils.json_to_sheet([sampleRow], { header: headers });
+
+    // Set column width for better visibility and format for Candidate Contact Number column
+    const phoneNumberColIndex = headers.indexOf("Candidate Contact Number");
+    const colWidths = headers.map((header, index) => {
+      const colConfig: any = { wch: 25 };
+      // Set entire column as Number type for Candidate Contact Number
+      if (index === phoneNumberColIndex) {
+        colConfig.numFmt = '0'; // Number format without decimals (integer format)
+      }
+      return colConfig;
+    });
+    ws['!cols'] = colWidths;
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sample");
+
+    // Generate Excel file and download
+    XLSX.writeFile(wb, "candidate_bulk_upload_sample.xlsx");
+  };
+
   const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingCsv(true);
 
     try {
-      const text = await file.text();
-      const lines = text.split("\n").filter(line => line.trim());
-      const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+      let text: string;
+      let headers: string[];
+      let lines: string[];
+
+      // Check if file is Excel format
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        // Load xlsx library from CDN if not already loaded
+        let XLSX: any;
+        if (typeof window !== 'undefined' && (window as any).XLSX) {
+          XLSX = (window as any).XLSX;
+        } else {
+          // Load xlsx from CDN
+          await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+            script.onload = () => {
+              XLSX = (window as any).XLSX;
+              resolve();
+            };
+            script.onerror = () => reject(new Error('Failed to load xlsx from CDN'));
+            document.head.appendChild(script);
+          });
+        }
+
+        // Read Excel file
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        // Convert to CSV format for processing
+        const csvData = XLSX.utils.sheet_to_csv(worksheet);
+        lines = csvData.split("\n").filter(line => line.trim());
+        headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+      } else {
+        // Handle CSV file
+        text = await file.text();
+        lines = text.split("\n").filter(line => line.trim());
+        headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+      }
       
       // Map CSV headers to table columns (case-insensitive matching)
       const columnMap: Record<string, keyof AEXCandidateInsert> = {
@@ -671,6 +832,16 @@ const Candidates = () => {
         "skills": "Skills",
         "documents": "Documents",
       };
+      // Note: "Expected CTC" is included in sample CSV but not mapped to database (field doesn't exist in schema)
+
+      // Define mandatory fields
+      const mandatoryFields: (keyof AEXCandidateInsert)[] = [
+        "Role Code",
+        "Candidate Name",
+        "Candidate Email ID",
+        "Candidate Contact Number",
+        "Candidate Resume"
+      ];
 
       // Fetch existing candidates to check for duplicates
       const { data: existingCandidates } = await supabase
@@ -707,9 +878,35 @@ const Candidates = () => {
           const key = columnMap[h.toLowerCase()];
           // Skip Application ID from CSV - we'll auto-generate it
           if (key === "Application ID") return;
-          if (!key || !values[idx]) return;
-          row[key] = values[idx].trim() || null;
+          if (!key) return;
+          // Set value even if empty (we'll validate mandatory fields separately)
+          let value = values[idx]?.trim() || "";
+          
+          // Normalize phone number format (remove .00, convert scientific notation, etc.)
+          if (key === "Candidate Contact Number" && value) {
+            value = normalizePhoneNumber(value);
+          }
+          
+          row[key] = value || null;
         });
+
+        // Validate mandatory fields
+        const missingFields: string[] = [];
+        mandatoryFields.forEach(field => {
+          const value = row[field];
+          if (!value || (typeof value === "string" && !value.trim())) {
+            missingFields.push(field);
+          }
+        });
+
+        // If mandatory fields are missing, skip this row and add to skippedRows
+        if (missingFields.length > 0) {
+          skippedRows.push({
+            row: i + 1,
+            reason: `Missing mandatory fields: ${missingFields.join(", ")}`
+          });
+          continue;
+        }
 
         // Check for duplicate Contact Number + Role Code
         const contactNumber = row["Candidate Contact Number"]?.trim();
@@ -721,11 +918,6 @@ const Candidates = () => {
             skippedRows.push({
               row: i + 1,
               reason: `Contact Number "${contactNumber}" and Role Code "${roleCode}" already exist`
-            });
-            toast({
-              title: `Row ${i + 1} Skipped`,
-              description: `Duplicate: Contact Number "${contactNumber}" and Role Code "${roleCode}" already exist`,
-              variant: "destructive",
             });
             continue;
           }
@@ -744,18 +936,27 @@ const Candidates = () => {
           }
         }
 
-        // Only add rows that have at least Candidate Name
-        if (row["Candidate Name"]) {
-          rows.push(row as AEXCandidateInsert);
-        }
+        // Add valid row
+        rows.push(row as AEXCandidateInsert);
+      }
+
+      // Show error notifications for skipped rows
+      if (skippedRows.length > 0) {
+        const errorMessages = skippedRows.map(sr => `Row ${sr.row}: ${sr.reason}`).join("\n");
+        toast({
+          title: `${skippedRows.length} Row(s) Skipped`,
+          description: errorMessages,
+          variant: "destructive",
+          duration: 10000, // Show for 10 seconds
+        });
       }
 
       if (rows.length === 0) {
         toast({
           title: "No Valid Rows",
           description: skippedRows.length > 0 
-            ? `All rows were skipped. ${skippedRows.length} duplicate(s) found.`
-            : "No valid rows found in CSV",
+            ? `All rows were skipped. Please check the error messages above.`
+            : "No valid rows found in CSV/Excel file",
           variant: "destructive",
         });
         setUploadingCsv(false);
@@ -770,8 +971,8 @@ const Candidates = () => {
       if (error) throw error;
 
       const successMessage = skippedRows.length > 0
-        ? `${rows.length} candidate(s) uploaded. ${skippedRows.length} duplicate(s) skipped.`
-        : `${rows.length} candidate(s) uploaded`;
+        ? `${rows.length} candidate(s) uploaded successfully. ${skippedRows.length} row(s) skipped due to missing mandatory fields or duplicates.`
+        : `${rows.length} candidate(s) uploaded successfully`;
 
       toast({ title: "Success", description: successMessage });
       setDialogOpen(false);
@@ -825,7 +1026,7 @@ const Candidates = () => {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Candidate</DialogTitle>
-              <DialogDescription>Add a single candidate or upload multiple via CSV</DialogDescription>
+              <DialogDescription>Add a single candidate or upload multiple via CSV/Excel</DialogDescription>
             </DialogHeader>
             <Tabs defaultValue="form" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
@@ -997,23 +1198,77 @@ const Candidates = () => {
                 </form>
               </TabsContent>
               <TabsContent value="csv" className="mt-4">
-                <div className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center bg-blue-50/30 hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
-                  <Upload className="h-12 w-12 mx-auto text-blue-600 mb-4" />
-                  <h3 className="text-lg font-semibold mb-2 text-blue-800">Upload CSV File</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    CSV columns: Role Code, Candidate Name, Candidate Email ID, etc.
-                  </p>
-                  <p className="text-xs text-muted-foreground mb-4">
-                    Note: Application ID will be auto-generated for each entry (ignored if present in CSV)
-                  </p>
-                  <input type="file" ref={fileInputRef} accept=".csv" onChange={handleCsvUpload} className="hidden" />
-                  <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingCsv}>
-                    {uploadingCsv ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading...</>
-                    ) : (
-                      <><FileSpreadsheet className="mr-2 h-4 w-4" />Select CSV</>
-                    )}
-                  </Button>
+                <div className="space-y-4">
+                  {/* Sample Excel Download Section */}
+                  <Card className="border-yellow-200/60 bg-yellow-50/30">
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <FileSpreadsheet className="h-5 w-5 text-yellow-600 mt-0.5" />
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-sm mb-2">Sample Excel Format</h4>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Download the sample Excel file with the correct column format. The Candidate Contact Number column is set to Number type. Mandatory fields are highlighted in red/yellow.
+                          </p>
+                          <div className="space-y-2 mb-3">
+                            <div className="text-xs">
+                              <span className="font-semibold text-red-600">Mandatory Fields (Required):</span>
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium text-xs">Role Code</span>
+                                <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium text-xs">Candidate Name</span>
+                                <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium text-xs">Candidate Email ID</span>
+                                <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium text-xs">Candidate Contact Number</span>
+                                <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium text-xs">Candidate Resume</span>
+                              </div>
+                            </div>
+                            <div className="text-xs">
+                              <span className="font-semibold text-muted-foreground">Optional Fields:</span>
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Candidate years of experience</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Candidate relevant years of experience</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Notice Period</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Current CTC</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Expected CTC</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Candidate Salary Expectation</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Current Location</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Skills</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Documents</span>
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={downloadSampleCsv}
+                            className="w-full sm:w-auto"
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download Sample Excel
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* CSV/Excel Upload Section */}
+                  <div className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center bg-blue-50/30 hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
+                    <Upload className="h-12 w-12 mx-auto text-blue-600 mb-4" />
+                    <h3 className="text-lg font-semibold mb-2 text-blue-800">Upload CSV/Excel File</h3>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Upload your CSV/Excel file with candidate data. Rows with missing mandatory fields will be skipped.
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Note: Application ID and Job Applied will be auto-generated for each entry
+                    </p>
+                    <input type="file" ref={fileInputRef} accept=".csv,.xlsx,.xls" onChange={handleCsvUpload} className="hidden" />
+                    <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingCsv}>
+                      {uploadingCsv ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading...</>
+                      ) : (
+                        <><FileSpreadsheet className="mr-2 h-4 w-4" />Select CSV/Excel</>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>

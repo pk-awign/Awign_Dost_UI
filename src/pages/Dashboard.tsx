@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Briefcase, Users, Target, CheckCircle, RefreshCw, Loader2 } from "lucide-react";
+import { Briefcase, Users, Target, CheckCircle, RefreshCw, Loader2, AlertCircle } from "lucide-react";
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -10,15 +10,19 @@ const Dashboard = () => {
     totalCandidates: 0,
     screenedCandidates: 0,
     activeScreenings: 0,
+    noResponse: 0,
   });
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchStats = async () => {
     setRefreshing(true);
     try {
-      const [jobsData, candidatesData, screenedData, queueData] = await Promise.all([
+      const [jobsData, candidatesData, screenedData, queueData, noResponseData] = await Promise.all([
         supabase.from("AEX_Job_Data").select("id", { count: "exact", head: true }),
-        supabase.from("AEX_Candidate_Data").select("id", { count: "exact", head: true }),
+        // Get all candidates to calculate distinct contact number count
+        supabase
+          .from("AEX_Candidate_Data")
+          .select("*"),
         supabase
           .from("AEX_Screening_Batch_Queue")
           .select("id", { count: "exact", head: true })
@@ -27,13 +31,31 @@ const Dashboard = () => {
           .from("AEX_Screening_Batch_Queue")
           .select("id", { count: "exact", head: true })
           .eq("Status", "Processing"),
+        supabase
+          .from("AEX_Screening_Batch_Queue")
+          .select("id", { count: "exact", head: true })
+          .eq("Status", "Waiting"),
       ]);
+
+      // Calculate unique Candidate Contact Number count
+      let uniqueCandidatesCount = 0;
+      if (candidatesData.error) {
+        console.error("Error fetching candidates data:", candidatesData.error);
+      } else if (candidatesData.data && Array.isArray(candidatesData.data)) {
+        const uniqueContacts = new Set(
+          candidatesData.data
+            .map((c: any) => c["Candidate Contact Number"])
+            .filter((contact): contact is string => contact !== null && contact !== undefined && contact.trim() !== "")
+        );
+        uniqueCandidatesCount = uniqueContacts.size;
+      }
 
       setStats({
         totalJobs: jobsData.count || 0,
-        totalCandidates: candidatesData.count || 0,
+        totalCandidates: uniqueCandidatesCount,
         screenedCandidates: screenedData.count || 0,
         activeScreenings: queueData.count || 0,
+        noResponse: noResponseData.count || 0,
       });
     } catch (error) {
       console.error("Error fetching stats:", error);
@@ -43,6 +65,7 @@ const Dashboard = () => {
         totalCandidates: 0,
         screenedCandidates: 0,
         activeScreenings: 0,
+        noResponse: 0,
       });
     } finally {
       setRefreshing(false);
@@ -78,6 +101,12 @@ const Dashboard = () => {
       icon: Target,
       color: "text-status-pending",
     },
+    {
+      title: "No Response",
+      value: stats.noResponse,
+      icon: AlertCircle,
+      color: "text-status-warning",
+    },
   ];
 
   return (
@@ -99,7 +128,7 @@ const Dashboard = () => {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
         {statCards.map((stat) => {
           const Icon = stat.icon;
           return (

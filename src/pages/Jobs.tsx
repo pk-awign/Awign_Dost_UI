@@ -22,7 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Loader2, Briefcase, MapPin, Clock, Upload, FileSpreadsheet, RefreshCw, FileText, X } from "lucide-react";
+import { Plus, Loader2, Briefcase, MapPin, Clock, Upload, FileSpreadsheet, RefreshCw, FileText, X, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { JobDetailDialog } from "@/components/JobDetailDialog";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
@@ -450,6 +450,66 @@ const Jobs = () => {
     setJdFile(file);
   };
 
+  const downloadSampleExcel = async () => {
+    // Load xlsx library from CDN to create Excel file with proper formatting
+    let XLSX: any;
+    if (typeof window !== 'undefined' && (window as any).XLSX) {
+      XLSX = (window as any).XLSX;
+    } else {
+      // Load xlsx from CDN
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        script.onload = () => {
+          XLSX = (window as any).XLSX;
+          resolve();
+        };
+        script.onerror = () => reject(new Error('Failed to load xlsx from CDN'));
+        document.head.appendChild(script);
+      });
+    }
+
+    // Define mandatory fields (highlighted in red/yellow)
+    const mandatoryFields = [
+      "Role Code",
+      "Role Name",
+      "Location",
+      "Annual CTC",
+      "Brief context about the role (JD)"
+    ];
+    
+    // Define optional fields
+    const optionalFields = [
+      "Minimum Experience",
+      "Duration",
+      "Skills",
+      "Current Updates"
+    ];
+
+    // Create headers array
+    const headers = [...mandatoryFields, ...optionalFields];
+    
+    // Create empty sample data row (all empty values)
+    const sampleRow: any = {};
+    headers.forEach((header) => {
+      sampleRow[header] = "";
+    });
+
+    // Create worksheet with headers only (empty data row)
+    const ws = XLSX.utils.json_to_sheet([sampleRow], { header: headers });
+
+    // Set column width for better visibility
+    const colWidths = headers.map(() => ({ wch: 25 }));
+    ws['!cols'] = colWidths;
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sample");
+
+    // Generate Excel file and download
+    XLSX.writeFile(wb, "job_bulk_upload_sample.xlsx");
+  };
+
   const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -457,9 +517,46 @@ const Jobs = () => {
     setUploadingCsv(true);
 
     try {
-      const text = await file.text();
-      const lines = text.split("\n").filter(line => line.trim());
-      const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, "").toLowerCase());
+      let text: string;
+      let headers: string[];
+      let lines: string[];
+
+      // Check if file is Excel format
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        // Load xlsx library from CDN if not already loaded
+        let XLSX: any;
+        if (typeof window !== 'undefined' && (window as any).XLSX) {
+          XLSX = (window as any).XLSX;
+        } else {
+          // Load xlsx from CDN
+          await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+            script.onload = () => {
+              XLSX = (window as any).XLSX;
+              resolve();
+            };
+            script.onerror = () => reject(new Error('Failed to load xlsx from CDN'));
+            document.head.appendChild(script);
+          });
+        }
+
+        // Read Excel file
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        // Convert to CSV format for processing
+        const csvData = XLSX.utils.sheet_to_csv(worksheet);
+        lines = csvData.split("\n").filter(line => line.trim());
+        headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+      } else {
+        // Handle CSV file
+        text = await file.text();
+        lines = text.split("\n").filter(line => line.trim());
+        headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+      }
       
       const columnMap: Record<string, string> = {
         "role code": "Role Code",
@@ -471,15 +568,26 @@ const Jobs = () => {
         "brief context about the role (jd)": "Brief context about the role (JD)",
         "jd context": "Brief context about the role (JD)",
         "jd_context": "Brief context about the role (JD)",
+        "annual ctc": "Candidate Monthly CTC",
+        "annual_ctc": "Candidate Monthly CTC",
+        "candidate monthly ctc": "Candidate Monthly CTC",
+        "candidate_monthly_ctc": "Candidate Monthly CTC",
         "current updates": "Current Updates",
         "current_updates": "Current Updates",
         "minimum experience": "Minimum Experience",
         "minimum_experience": "Minimum Experience",
         "duration": "Duration",
-        "candidate monthly ctc": "Candidate Monthly CTC",
-        "candidate_monthly_ctc": "Candidate Monthly CTC",
         "skills": "Skills",
       };
+
+      // Define mandatory fields
+      const mandatoryFields: string[] = [
+        "Role Code",
+        "Role Name",
+        "Location",
+        "Candidate Monthly CTC", // Maps from "Annual CTC" in CSV
+        "Brief context about the role (JD)"
+      ];
 
       // Get all existing Role Codes from database
       const { data: existingJobs } = await supabase
@@ -499,150 +607,85 @@ const Jobs = () => {
         const values = parseCSVLine(lines[i]);
         if (values.length === 0) continue;
         
-        const row: any = {};
+        const row: Partial<JobInsert> = {};
         headers.forEach((header, idx) => {
           const mappedKey = columnMap[header.toLowerCase()];
           if (mappedKey && values[idx]) {
             const value = values[idx].trim();
-            row[mappedKey] = value || null;
+            row[mappedKey as keyof JobInsert] = value || null;
           }
         });
 
-        const rowNumber = i;
-        const roleCode = row["Role Code"]?.trim();
-        const roleName = row["Role Name"]?.trim();
-        const location = row["Location"]?.trim();
-        const jdContext = row["Brief context about the role (JD)"]?.trim();
-        const candidateMonthlyCtc = row["Candidate Monthly CTC"]?.trim?.();
+        const rowNumber = i + 1;
 
-        // Validate required fields
-        if (!roleCode) {
-          resultRows.push({
-            originalLine: lines[i],
-            rowNumber,
-            status: "INVALID",
-            reason: "Missing Role Code",
-            data: row,
-          });
-          toast({
-            title: `Row ${rowNumber} Skipped`,
-            description: "Missing required field: Role Code",
-            variant: "destructive",
-          });
-          continue;
+        // Auto-fill Status to "Active" if not provided
+        if (!row["Status"] || !row["Status"].trim()) {
+          row["Status"] = "active";
         }
 
-        if (!roleName) {
-          resultRows.push({
-            originalLine: lines[i],
-            rowNumber,
-            status: "INVALID",
-            reason: "Missing Role Name",
-            data: row,
-          });
-          toast({
-            title: `Row ${rowNumber} Skipped`,
-            description: "Missing required field: Role Name",
-            variant: "destructive",
-          });
-          continue;
-        }
+        // Validate mandatory fields
+        const missingFields: string[] = [];
+        mandatoryFields.forEach(field => {
+          const value = row[field as keyof JobInsert];
+          if (!value || (typeof value === "string" && !value.trim())) {
+            // Map back to CSV column name for user-friendly error message
+            if (field === "Candidate Monthly CTC") {
+              missingFields.push("Annual CTC");
+            } else {
+              missingFields.push(field);
+            }
+          }
+        });
 
-        if (!location) {
+        // If mandatory fields are missing, skip this row
+        if (missingFields.length > 0) {
           resultRows.push({
             originalLine: lines[i],
             rowNumber,
             status: "INVALID",
-            reason: "Missing Location",
+            reason: `Missing mandatory fields: ${missingFields.join(", ")}`,
             data: row,
-          });
-          toast({
-            title: `Row ${rowNumber} Skipped`,
-            description: "Missing required field: Location",
-            variant: "destructive",
-          });
-          continue;
-        }
-
-        if (!jdContext) {
-          resultRows.push({
-            originalLine: lines[i],
-            rowNumber,
-            status: "INVALID",
-            reason: "Missing Brief context about the role (JD)",
-            data: row,
-          });
-          toast({
-            title: `Row ${rowNumber} Skipped`,
-            description: "Missing required field: Brief context about the role (JD)",
-            variant: "destructive",
           });
           continue;
         }
 
         // Validate JD is a valid URL
-        try {
-          const urlObj = new URL(jdContext);
-          if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+        const jdContext = row["Brief context about the role (JD)"]?.trim();
+        if (jdContext) {
+          try {
+            const urlObj = new URL(jdContext);
+            if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+              resultRows.push({
+                originalLine: lines[i],
+                rowNumber,
+                status: "INVALID",
+                reason: "Brief context about the role (JD) must be a valid file URL (http:// or https://)",
+                data: row,
+              });
+              continue;
+            }
+          } catch {
             resultRows.push({
               originalLine: lines[i],
               rowNumber,
               status: "INVALID",
-              reason: "JD must be a valid file URL (http:// or https://)",
+              reason: "Brief context about the role (JD) must be a valid file URL (http:// or https://)",
               data: row,
-            });
-            toast({
-              title: `Row ${rowNumber} Skipped`,
-              description: "Brief context about the role (JD) must be a valid file URL (http:// or https://)",
-              variant: "destructive",
             });
             continue;
           }
-        } catch {
-          resultRows.push({
-            originalLine: lines[i],
-            rowNumber,
-            status: "INVALID",
-            reason: "JD must be a valid file URL (http:// or https://)",
-            data: row,
-          });
-          toast({
-            title: `Row ${rowNumber} Skipped`,
-            description: "Brief context about the role (JD) must be a valid file URL (http:// or https://)",
-            variant: "destructive",
-          });
-          continue;
         }
 
-        if (!candidateMonthlyCtc) {
-          resultRows.push({
-            originalLine: lines[i],
-            rowNumber,
-            status: "INVALID",
-            reason: "Missing Annual CTC",
-            data: row,
-          });
-          toast({
-            title: `Row ${rowNumber} Skipped`,
-            description: "Missing required field: Annual CTC",
-            variant: "destructive",
-          });
-          continue;
-        }
+        const roleCode = row["Role Code"]?.trim();
 
-        // Check for duplicate Role Code within CSV
+        // Check for duplicate Role Code within CSV/Excel
         if (seenRoleCodes.has(roleCode)) {
           resultRows.push({
             originalLine: lines[i],
             rowNumber,
             status: "DUPLICATE_IN_CSV",
-            reason: `Role Code "${roleCode}" already exists in this CSV file`,
+            reason: `Role Code "${roleCode}" already exists in this file`,
             data: row,
-          });
-          toast({
-            title: `Row ${rowNumber} Skipped`,
-            description: `Duplicate Role Code "${roleCode}" found in CSV`,
-            variant: "destructive",
           });
           continue;
         }
@@ -655,11 +698,6 @@ const Jobs = () => {
             status: "ALREADY_EXISTS",
             reason: `Role Code "${roleCode}" already exists in database`,
             data: row,
-          });
-          toast({
-            title: `Row ${rowNumber} Skipped`,
-            description: `Role Code "${roleCode}" already exists in database`,
-            variant: "destructive",
           });
           continue;
         }
@@ -675,10 +713,24 @@ const Jobs = () => {
         });
       }
 
+      // Show error notifications for skipped rows
+      const skippedRows = resultRows.filter(r => r.status !== "SUCCESS");
+      if (skippedRows.length > 0) {
+        const errorMessages = skippedRows.map(sr => `Row ${sr.rowNumber}: ${sr.reason}`).join("\n");
+        toast({
+          title: `${skippedRows.length} Row(s) Skipped`,
+          description: errorMessages,
+          variant: "destructive",
+          duration: 10000, // Show for 10 seconds
+        });
+      }
+
       if (validRows.length === 0) {
         toast({
           title: "No Valid Rows",
-          description: "No valid rows found to insert. All rows were skipped due to validation errors or duplicates.",
+          description: skippedRows.length > 0 
+            ? `All rows were skipped. Please check the error messages above.`
+            : "No valid rows found in CSV/Excel file",
           variant: "destructive",
         });
         setUploadingCsv(false);
@@ -687,40 +739,23 @@ const Jobs = () => {
         }
         return;
       }
-          // Insert valid rows
+      
+      // Insert valid rows
       const { error } = await supabase.from("AEX_Job_Data").insert(validRows as any);
 
       if (error) throw error;
-
-      // Generate result CSV with status column
-      const resultCsvLines: string[] = [];
-      resultCsvLines.push(`"Row Number","Status","Reason",${headers.map(h => `"${h}"`).join(",")}`);
-      
-      resultRows.forEach((result) => {
-        const statusColor = result.status === "INVALID" ? "RED" : result.status === "ALREADY_EXISTS" || result.status === "DUPLICATE_IN_CSV" ? "YELLOW" : "GREEN";
-        const reason = result.reason || "Successfully inserted";
-        const originalValues = parseCSVLine(result.originalLine);
-        resultCsvLines.push(`"${result.rowNumber}","${result.status} (${statusColor})","${reason}",${originalValues.map(v => `"${v}"`).join(",")}`);
-      });
-
-      const resultCsv = resultCsvLines.join("\n");
-      const blob = new Blob([resultCsv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `job_upload_result_${new Date().getTime()}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
 
       const invalidCount = resultRows.filter(r => r.status === "INVALID").length;
       const duplicateCount = resultRows.filter(r => r.status === "ALREADY_EXISTS" || r.status === "DUPLICATE_IN_CSV").length;
       const successCount = validRows.length;
 
+      const successMessage = skippedRows.length > 0
+        ? `${successCount} job(s) uploaded successfully. ${skippedRows.length} row(s) skipped due to missing mandatory fields or duplicates.`
+        : `${successCount} job(s) uploaded successfully`;
+
       toast({
-        title: "Upload Complete",
-        description: `${successCount} job(s) inserted successfully. ${invalidCount} invalid, ${duplicateCount} duplicate. Result CSV downloaded.`,
+        title: "Success",
+        description: successMessage,
       });
       setDialogOpen(false);
       fetchJobs();
@@ -812,7 +847,7 @@ const Jobs = () => {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Job</DialogTitle>
-              <DialogDescription>Add a single job or upload multiple via CSV</DialogDescription>
+              <DialogDescription>Add a single job or upload multiple via CSV/Excel</DialogDescription>
             </DialogHeader>
             
             <Tabs defaultValue="form" className="w-full">
@@ -995,25 +1030,69 @@ const Jobs = () => {
               
               <TabsContent value="csv" className="mt-4">
                 <div className="space-y-4">
+                  {/* Sample Excel Download Section */}
+                  <Card className="border-yellow-200/60 bg-yellow-50/30">
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <FileSpreadsheet className="h-5 w-5 text-yellow-600 mt-0.5" />
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-sm mb-2">Sample Excel Format</h4>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Download the sample Excel file with the correct column format. Mandatory fields are highlighted in red/yellow.
+                          </p>
+                          <div className="space-y-2 mb-3">
+                            <div className="text-xs">
+                              <span className="font-semibold text-red-600">Mandatory Fields (Required):</span>
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium text-xs">Role Code</span>
+                                <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium text-xs">Role Name</span>
+                                <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium text-xs">Location</span>
+                                <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium text-xs">Annual CTC</span>
+                                <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium text-xs">Brief context about the role (JD)</span>
+                              </div>
+                            </div>
+                            <div className="text-xs">
+                              <span className="font-semibold text-muted-foreground">Optional Fields:</span>
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Minimum Experience</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Duration</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Skills</span>
+                                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Current Updates</span>
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-2">
+                              Note: Status will be auto-filled to "Active" for each entry. Brief context about the role (JD) must be a valid file URL (http:// or https://).
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={downloadSampleExcel}
+                            className="w-full sm:w-auto"
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download Sample Excel
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* CSV/Excel Upload Section */}
                   <div className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center bg-blue-50/30 hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
                     <Upload className="h-12 w-12 mx-auto text-blue-600 mb-4" />
-                    <h3 className="text-lg font-semibold mb-2 text-blue-800">Upload CSV File</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Upload a CSV file with job data. Required columns:
-                    </p>
-                    <p className="text-xs text-muted-foreground mb-2 font-mono bg-muted p-2 rounded">
-                      Required columns: Role Code*, Role Name*, Location*, Brief context about the role (JD)*
-                    </p>
-                    <p className="text-xs text-muted-foreground mb-4 font-mono bg-muted p-2 rounded">
-                      Optional columns: Status, Current Updates, Minimum Experience, Duration, Annual CTC, Skills
+                    <h3 className="text-lg font-semibold mb-2 text-blue-800">Upload CSV/Excel File</h3>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Upload your CSV/Excel file with job data. Rows with missing mandatory fields will be skipped.
                     </p>
                     <p className="text-xs text-muted-foreground mb-4">
-                      *Brief context about the role (JD) must be a valid file URL (http:// or https://)
+                      Note: Status will be auto-filled to "Active" for each entry
                     </p>
                     <input
                       type="file"
                       ref={fileInputRef}
-                      accept=".csv"
+                      accept=".csv,.xlsx,.xls"
                       onChange={handleCsvUpload}
                       className="hidden"
                       id="csv-upload"
@@ -1032,7 +1111,7 @@ const Jobs = () => {
                       ) : (
                         <>
                           <FileSpreadsheet className="mr-2 h-4 w-4" />
-                          Select CSV File
+                          Select CSV/Excel
                         </>
                       )}
                     </Button>

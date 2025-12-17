@@ -223,7 +223,7 @@ export function JobDetailDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Candidate Monthly CTC</Label>
+            <Label>Candidate Annual CTC</Label>
             {isEditing ? (
               <Input
                 value={formData.candidateMonthlyCtc}
