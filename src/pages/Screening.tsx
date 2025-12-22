@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2, Target, RefreshCw, ExternalLink, Filter } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import {
   Table,
@@ -53,6 +54,7 @@ interface ScreeningRecord {
   "Similarity Summary": string | null;
   "Rejection Reason": string | null;
   "Date Created": string | null;
+  isWaiting?: boolean; // Flag to identify waiting candidates
 }
 
 const Screening = () => {
@@ -62,6 +64,7 @@ const Screening = () => {
   const [selectedRecord, setSelectedRecord] = useState<ScreeningRecord | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [expandedView, setExpandedView] = useState(false);
+  const [showWaitingCandidates, setShowWaitingCandidates] = useState(false);
   
   // Filter states
   const [callStatusFilter, setCallStatusFilter] = useState<string>("all");
@@ -79,65 +82,231 @@ const Screening = () => {
 
   useEffect(() => {
     fetchScreenings();
-  }, []);
+  }, [showWaitingCandidates]);
 
   const fetchScreenings = async () => {
     try {
       setLoading(true);
       console.log("Fetching from AEX_Screening_Tracker...");
-      const { data, error } = await supabase
+      
+      // Fetch from AEX_Screening_Tracker
+      const { data: trackerData, error: trackerError } = await supabase
         .from("AEX_Screening_Tracker")
         .select("*")
-        .order("created_at", { ascending: false }); // Initial fetch order, will be re-sorted by applyFilters
+        .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("Error fetching screenings:", error);
-        console.error("Error details:", JSON.stringify(error, null, 2));
-        throw error;
+      if (trackerError) {
+        console.error("Error fetching screenings:", trackerError);
+        console.error("Error details:", JSON.stringify(trackerError, null, 2));
+        throw trackerError;
       }
       
-      console.log("Fetched data:", data?.length || 0, "records");
+      console.log("Fetched tracker data:", trackerData?.length || 0, "records");
       
-      // Transform data to match interface
-      // Try both snake_case and exact column names
-      const transformedData: ScreeningRecord[] = (data || []).map((row: any) => {
-        // Check if row uses exact column names (with spaces) or snake_case
-        const hasExactNames = row["Application ID"] !== undefined;
-        
-        // created_at is always in snake_case in Supabase
-        // Check row.created_at first (standard Supabase format), then fallback to other formats
-        const dateCreated = row.created_at || row["Date Created"] || null;
-        
-        return {
-          id: row.id,
-          "Application ID": hasExactNames ? (row["Application ID"] || "") : (row.application_id || ""),
-          "Job Title": hasExactNames ? row["Job Title"] : row.job_title,
-          "Role Code": hasExactNames ? row["Role Code"] : row.role_code,
-          "Candidate Name": hasExactNames ? row["Candidate Name"] : row.candidate_name,
-          "Screening Outcome": hasExactNames ? row["Screening Outcome"] : row.screening_outcome,
-          "Screening Summary": hasExactNames ? row["Screening Summary"] : row.screening_summary,
-          "Call Status": hasExactNames ? row["Call Status"] : row.call_status,
-          "Call Score": hasExactNames ? (row["Call Score"]?.toString() || null) : (row.call_score?.toString() || null),
-          "Similarity Score": hasExactNames ? (row["Similarity Score"]?.toString() || null) : (row.similarity_score?.toString() || null),
-          "Final Score": hasExactNames ? (row["Final Score"]?.toString() || null) : (row.final_score?.toString() || null),
-          "Conversation ID": hasExactNames ? row["Conversation ID"] : row.conversation_id,
-          "Recording Link": hasExactNames ? row["Recording Link"] : row.recording_link,
-          "Notice Period": hasExactNames ? (row["Notice Period"]?.toString() || null) : (row.notice_period?.toString() || null),
-          "Current CTC": hasExactNames ? (row["Current CTC"]?.toString() || null) : (row.current_ctc?.toString() || null),
-          "Expected CTC": hasExactNames ? (row["Expected CTC"]?.toString() || null) : (row.expected_ctc?.toString() || null),
-          "Other Job Offers": hasExactNames ? row["Other Job Offers"] : row.other_job_offers,
-          "Current Location": hasExactNames ? row["Current Location"] : row.current_location,
-          "Call Route": hasExactNames ? row["Call Route"] : row.call_route,
-          "Similarity Summary": hasExactNames ? row["Similarity Summary"] : row.similarity_summary,
-          "Rejection Reason": hasExactNames ? row["Rejection Reason"] : row.rejection_reason,
-          "Date Created": dateCreated,
-        };
-      });
+      // Fetch all entries from AEX_Screening_Batch_Queue to check status
+      console.log("Fetching queue status from AEX_Screening_Batch_Queue...");
+      const { data: queueData, error: queueError } = await supabase
+        .from("AEX_Screening_Batch_Queue")
+        .select('*');
+
+      if (queueError) {
+        console.error("Error fetching queue data:", queueError);
+        // Don't throw, just log the error
+      }
+
+      // Create a map of Application ID -> Status from queue
+      const queueStatusMap = new Map<string, string>();
+      if (queueData) {
+        queueData.forEach((row: any) => {
+          const appId = row["Application ID"] || row.application_id;
+          const status = row["Status"] || row.status;
+          if (appId && status) {
+            queueStatusMap.set(appId, status);
+          }
+        });
+      }
+      console.log("Queue status map:", queueStatusMap.size, "entries");
+
+      // Create a map of Application IDs in tracker for quick lookup
+      const trackerAppIds = new Set<string>();
+      if (trackerData) {
+        trackerData.forEach((row: any) => {
+          const appId = row["Application ID"] || row.application_id;
+          if (appId) {
+            trackerAppIds.add(appId);
+          }
+        });
+      }
+
+      // Transform and filter tracker data based on queue status
+      const transformedData: ScreeningRecord[] = [];
+      
+      if (trackerData) {
+        for (const row of trackerData) {
+          // Check if row uses exact column names (with spaces) or snake_case
+          const hasExactNames = row["Application ID"] !== undefined;
+          const appId = hasExactNames ? (row["Application ID"] || "") : (row.application_id || "");
+          
+          if (!appId) continue; // Skip if no Application ID
+          
+          // Check queue status for this Application ID
+          const queueStatus = queueStatusMap.get(appId);
+          
+          // Only display if:
+          // 1. Status=Completed in queue (show by default)
+          // 2. Status=Waiting in queue (only show when toggle is ON)
+          // 3. No entry in queue (don't display - requirement says to check queue status)
+          
+          if (queueStatus === "Completed") {
+            // Display completed entries by default
+            const dateCreated = row.created_at || row["Date Created"] || null;
+            
+            transformedData.push({
+              id: row.id,
+              "Application ID": appId,
+              "Job Title": hasExactNames ? row["Job Title"] : row.job_title,
+              "Role Code": hasExactNames ? row["Role Code"] : row.role_code,
+              "Candidate Name": hasExactNames ? row["Candidate Name"] : row.candidate_name,
+              "Screening Outcome": hasExactNames ? row["Screening Outcome"] : row.screening_outcome,
+              "Screening Summary": hasExactNames ? row["Screening Summary"] : row.screening_summary,
+              "Call Status": hasExactNames ? row["Call Status"] : row.call_status,
+              "Call Score": hasExactNames ? (row["Call Score"]?.toString() || null) : (row.call_score?.toString() || null),
+              "Similarity Score": hasExactNames ? (row["Similarity Score"]?.toString() || null) : (row.similarity_score?.toString() || null),
+              "Final Score": hasExactNames ? (row["Final Score"]?.toString() || null) : (row.final_score?.toString() || null),
+              "Conversation ID": hasExactNames ? row["Conversation ID"] : row.conversation_id,
+              "Recording Link": hasExactNames ? row["Recording Link"] : row.recording_link,
+              "Notice Period": hasExactNames ? (row["Notice Period"]?.toString() || null) : (row.notice_period?.toString() || null),
+              "Current CTC": hasExactNames ? (row["Current CTC"]?.toString() || null) : (row.current_ctc?.toString() || null),
+              "Expected CTC": hasExactNames ? (row["Expected CTC"]?.toString() || null) : (row.expected_ctc?.toString() || null),
+              "Other Job Offers": hasExactNames ? row["Other Job Offers"] : row.other_job_offers,
+              "Current Location": hasExactNames ? row["Current Location"] : row.current_location,
+              "Call Route": hasExactNames ? row["Call Route"] : row.call_route,
+              "Similarity Summary": hasExactNames ? row["Similarity Summary"] : row.similarity_summary,
+              "Rejection Reason": hasExactNames ? row["Rejection Reason"] : row.rejection_reason,
+              "Date Created": dateCreated,
+              isWaiting: false,
+            });
+          } else if (queueStatus === "Waiting" && showWaitingCandidates) {
+            // Display waiting entries from tracker when toggle is ON
+            // Use tracker data directly (entry found in tracker)
+            const dateCreated = row.created_at || row["Date Created"] || null;
+            
+            transformedData.push({
+              id: row.id,
+              "Application ID": appId,
+              "Job Title": hasExactNames ? row["Job Title"] : row.job_title,
+              "Role Code": hasExactNames ? row["Role Code"] : row.role_code,
+              "Candidate Name": hasExactNames ? row["Candidate Name"] : row.candidate_name,
+              "Screening Outcome": hasExactNames ? row["Screening Outcome"] : row.screening_outcome,
+              "Screening Summary": hasExactNames ? row["Screening Summary"] : row.screening_summary,
+              "Call Status": hasExactNames ? row["Call Status"] : row.call_status,
+              "Call Score": hasExactNames ? (row["Call Score"]?.toString() || null) : (row.call_score?.toString() || null),
+              "Similarity Score": hasExactNames ? (row["Similarity Score"]?.toString() || null) : (row.similarity_score?.toString() || null),
+              "Final Score": hasExactNames ? (row["Final Score"]?.toString() || null) : (row.final_score?.toString() || null),
+              "Conversation ID": hasExactNames ? row["Conversation ID"] : row.conversation_id,
+              "Recording Link": hasExactNames ? row["Recording Link"] : row.recording_link,
+              "Notice Period": hasExactNames ? (row["Notice Period"]?.toString() || null) : (row.notice_period?.toString() || null),
+              "Current CTC": hasExactNames ? (row["Current CTC"]?.toString() || null) : (row.current_ctc?.toString() || null),
+              "Expected CTC": hasExactNames ? (row["Expected CTC"]?.toString() || null) : (row.expected_ctc?.toString() || null),
+              "Other Job Offers": hasExactNames ? row["Other Job Offers"] : row.other_job_offers,
+              "Current Location": hasExactNames ? row["Current Location"] : row.current_location,
+              "Call Route": hasExactNames ? row["Call Route"] : row.call_route,
+              "Similarity Summary": hasExactNames ? row["Similarity Summary"] : row.similarity_summary,
+              "Rejection Reason": hasExactNames ? row["Rejection Reason"] : row.rejection_reason,
+              "Date Created": dateCreated,
+              isWaiting: true,
+            });
+          }
+          // If no queue entry or status is not Completed/Waiting, don't display
+        }
+      }
+      
+      // Fetch waiting candidates that are NOT in tracker (standalone waiting entries)
+      // For these, fetch specific fields from AEX_Candidate_Data
+      if (showWaitingCandidates) {
+        console.log("Fetching standalone waiting candidates from AEX_Screening_Batch_Queue...");
+        const { data: waitingQueueData, error: waitingQueueError } = await supabase
+          .from("AEX_Screening_Batch_Queue")
+          .select('*')
+          .eq("Status", "Waiting");
+
+        if (!waitingQueueError && waitingQueueData && waitingQueueData.length > 0) {
+          // Get Application IDs that are in waiting queue but NOT in tracker
+          const standaloneWaitingIds = waitingQueueData
+            .map((row: any) => row["Application ID"] || row.application_id)
+            .filter((id: string | null): id is string => id !== null && !trackerAppIds.has(id));
+
+          if (standaloneWaitingIds.length > 0) {
+            // Fetch candidate details from AEX_Candidate_Data
+            const { data: candidateData, error: candidateError } = await supabase
+              .from("AEX_Candidate_Data")
+              .select('"Application ID", "Candidate Name", "Job Applied", "Role Code", "Profile Status", created_at')
+              .in("Application ID", standaloneWaitingIds);
+
+            if (!candidateError && candidateData) {
+              // Create a map of Application ID to candidate data
+              const candidateMap = new Map<string, any>();
+              candidateData.forEach((candidate: any) => {
+                const appId = candidate["Application ID"];
+                if (appId) {
+                  candidateMap.set(appId, candidate);
+                }
+              });
+
+              // Create waiting candidate records
+              const waitingRecords: ScreeningRecord[] = waitingQueueData
+                .filter((queueRow: any) => {
+                  const appId = queueRow["Application ID"] || queueRow.application_id;
+                  return appId && !trackerAppIds.has(appId) && candidateMap.has(appId);
+                })
+                .map((queueRow: any) => {
+                  const appId = queueRow["Application ID"] || queueRow.application_id;
+                  const candidate = candidateMap.get(appId);
+                  
+                  if (!candidate) return null;
+
+                  const dateCreated = queueRow.created_at || queueRow["Date Created"] || candidate.created_at || null;
+                  const callStatus = candidate["Profile Status"] || null;
+
+                  return {
+                    id: queueRow.id,
+                    "Application ID": appId,
+                    "Job Title": candidate["Job Applied"] || null,
+                    "Role Code": candidate["Role Code"] || queueRow["Role Code"] || queueRow.role_code || null,
+                    "Candidate Name": candidate["Candidate Name"] || null,
+                    "Screening Outcome": null,
+                    "Screening Summary": null,
+                    "Call Status": callStatus,
+                    "Call Score": null,
+                    "Similarity Score": null,
+                    "Final Score": null,
+                    "Conversation ID": null,
+                    "Recording Link": null,
+                    "Notice Period": null,
+                    "Current CTC": null,
+                    "Expected CTC": null,
+                    "Other Job Offers": null,
+                    "Current Location": null,
+                    "Call Route": null,
+                    "Similarity Summary": null,
+                    "Rejection Reason": null,
+                    "Date Created": dateCreated,
+                    isWaiting: true,
+                  };
+                })
+                .filter((record): record is ScreeningRecord => record !== null);
+
+              transformedData.push(...waitingRecords);
+              console.log("Added", waitingRecords.length, "standalone waiting candidates to the list");
+            }
+          }
+        }
+      }
       
       // Debug: Log first row to see what data structure we're getting
       if (transformedData.length > 0) {
-        console.log("Sample row data:", data?.[0]);
-        console.log("Transformed Date Created:", transformedData[0]["Date Created"]);
+        console.log("Sample row data:", transformedData[0]);
+        console.log("Total records:", transformedData.length);
       }
       
       setScreenings(transformedData);
@@ -407,7 +576,17 @@ const Screening = () => {
       {filteredScreenings.length > 0 ? (
         <Card>
           <CardContent className="p-0">
-            <div className="flex justify-end px-4 pt-4">
+            <div className="flex justify-end items-center gap-4 px-4 pt-4">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="show-waiting" className="text-sm">
+                  Show No-Response Candidates
+                </Label>
+                <Switch
+                  id="show-waiting"
+                  checked={showWaitingCandidates}
+                  onCheckedChange={setShowWaitingCandidates}
+                />
+              </div>
               <Button
                 variant={expandedView ? "default" : "outline"}
                 size="sm"

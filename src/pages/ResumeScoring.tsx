@@ -335,6 +335,33 @@ const ResumeScoring = () => {
         throw updateError;
       }
 
+      // Call webhook to trigger n8n workflow after successful update
+      try {
+        const webhookUrl = "https://awign-pm-dev.app.n8n.cloud/webhook/8cd504bf-2ed9-4532-82e1-a0fc4c3df045";
+        const selectedCandidates = filteredPendingCandidates.filter((c) =>
+          selectedPendingIds.includes(c.id)
+        );
+        
+        const response = await fetch(webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            candidate_count: selectedPendingIds.length,
+            candidate_ids: selectedPendingIds,
+            application_ids: selectedCandidates.map((c) => c["Application ID"]).filter((id): id is string => id !== null),
+          }),
+        });
+
+        if (!response.ok) {
+          console.warn("Webhook call failed, but candidates were updated successfully");
+        }
+      } catch (webhookError) {
+        console.error("Error calling webhook:", webhookError);
+        // Don't throw error - candidates were updated successfully
+      }
+
       toast({
         title: "Success",
         description: `${selectedPendingIds.length} candidate(s) marked as STARTED and Resume Scoring workflow triggered`,
@@ -404,6 +431,29 @@ const ResumeScoring = () => {
 
       if (insertError) {
         throw insertError;
+      }
+
+      // Call webhook to trigger n8n workflow after successful insert
+      try {
+        const webhookUrl = "https://awign-pm-dev.app.n8n.cloud/webhook/8a0408be-5951-473c-ae93-6409db7794de";
+        const response = await fetch(webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            batch_size: rows.length,
+            application_ids: rows.map((row) => row["Application ID"]),
+            role_codes: rows.map((row) => row["Role Code"]),
+          }),
+        });
+
+        if (!response.ok) {
+          console.warn("Webhook call failed, but records were inserted successfully");
+        }
+      } catch (webhookError) {
+        console.error("Error calling webhook:", webhookError);
+        // Don't throw error - records were inserted successfully
       }
 
       toast({
@@ -847,6 +897,9 @@ const ResumeScoring = () => {
 };
 
 export default ResumeScoring;
+
+
+
 
 
 
